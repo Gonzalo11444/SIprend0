@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, render_template
 import requests
 import logging
 import os
@@ -9,16 +9,21 @@ logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 
-# ----------------- CONFIG -----------------
-CLIENT_ID = os.getenv("CLIENT_ID", "a9nabo03iqzc4bcbypwc8ja6nh5u2d")
-CLIENT_SECRET = os.getenv("CLIENT_SECRET", "3ajonemow3s2vn54harwqh2a9qterb")
-ACCESS_TOKEN = os.getenv("ACCESS_TOKEN", "").strip()
-REFRESH_TOKEN = os.getenv("REFRESH_TOKEN", "").strip()
-USER_ID = os.getenv("USER_ID", "753095247")
-# -----------------------------------------
+# ----------------- TWITCH CONFIG -----------------
+CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
+REFRESH_TOKEN = os.getenv("REFRESH_TOKEN")
+USER_ID = os.getenv("USER_ID")
 
+# ----------------- YOUTUBE CONFIG -----------------
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+YOUTUBE_CHANNEL_ID = os.getenv("YOUTUBE_CHANNEL_ID")
 
-# ------------ TOKEN REFRESH --------------
+# =====================================================
+# ===============  TWITCH FUNCTIONS  ==================
+# =====================================================
+
 def refresh_access_token():
     global ACCESS_TOKEN, REFRESH_TOKEN
     url = "https://id.twitch.tv/oauth2/token"
@@ -32,14 +37,10 @@ def refresh_access_token():
     if r.status_code != 200:
         logging.error("Error refrescando token: %s %s", r.status_code, r.text)
         return False
-
     resp = r.json()
     ACCESS_TOKEN = resp.get("access_token")
     REFRESH_TOKEN = resp.get("refresh_token", REFRESH_TOKEN)
-
-    logging.info("🔄 Token actualizado automáticamente")
     return True
-
 
 def get_headers():
     return {
@@ -47,141 +48,106 @@ def get_headers():
         "Authorization": f"Bearer {ACCESS_TOKEN}"
     }
 
-
 def safe_request(url):
     r = requests.get(url, headers=get_headers())
-
-    # Si el token ha expirado
     if r.status_code == 401:
-        logging.info("⚠️ Token expirado, refrescando...")
         if refresh_access_token():
             r = requests.get(url, headers=get_headers())
-
     return r
 
-
-# ------------ TWITCH API CALLS -----------
-def get_user_info():
+def get_twitch_user():
     url = "https://api.twitch.tv/helix/users"
-    r = safe_request(url)
-    if r.status_code != 200:
-        logging.error("Error users: %s %s", r.status_code, r.text)
-        return None
+    return safe_request(url).json().get("data", [{}])[0]
 
-    data = r.json()
-    return data.get('data', [{}])[0] if data.get('data') else None
-
-
-def get_followers():
+def get_twitch_followers():
     url = f"https://api.twitch.tv/helix/channels/followers?broadcaster_id={USER_ID}"
     r = safe_request(url)
-    if r.status_code != 200:
-        logging.error("Error followers: %s %s", r.status_code, r.text)
-        return 0
     return r.json().get("total", 0)
 
-
-def get_stream_info():
+def get_twitch_stream():
     url = f"https://api.twitch.tv/helix/streams?user_id={USER_ID}"
-    r = safe_request(url)
-    if r.status_code != 200:
-        logging.error("Error streams: %s %s", r.status_code, r.text)
-        return None
-
-    data = r.json()
-    return data.get('data', [{}])[0] if data.get('data') else None
+    data = safe_request(url).json()
+    return data.get("data", [{}])[0] if data.get("data") else None
 
 
-# ------------ API ROUTE ------------------
-@app.route("/api/status")
-def api_status():
-    user = get_user_info()
-    followers = get_followers()
-    stream = get_stream_info()
+@app.route("/api/twitch")
+def api_twitch():
+    user = get_twitch_user()
+    followers = get_twitch_followers()
+    stream = get_twitch_stream()
 
     info = {
-        "display_name": user.get("display_name") if user else "-",
-        "login": user.get("login") if user else "-",
-        "user_id": user.get("id") if user else "-",
-        "views_total": user.get("view_count", 0) if user else 0,
+        "display_name": user.get("display_name", "-"),
+        "login": user.get("login", "-"),
         "followers": followers,
+        "views_total": user.get("view_count", 0),
         "stream_online": bool(stream),
-        "title": stream.get("title", "-") if stream else "-",
         "viewer_count": stream.get("viewer_count", 0) if stream else 0,
-        "profile_image_url": user.get("profile_image_url", "") if user else ""
+        "title": stream.get("title", "-") if stream else "-"
+    }
+    return jsonify(info)
+
+# =====================================================
+# ===============  YOUTUBE FUNCTIONS  =================
+# =====================================================
+
+def yt_request(url, params):
+    params["key"] = YOUTUBE_API_KEY
+    return requests.get(url, params=params).json()
+
+def get_yt_channel_stats():
+    url = "https://www.googleapis.com/youtube/v3/channels"
+    params = {
+        "id": YOUTUBE_CHANNEL_ID,
+        "part": "statistics,snippet"
+    }
+    data = yt_request(url, params)
+    if "items" not in data:
+        return None
+    return data["items"][0]
+
+def get_yt_latest_video():
+    url = "https://www.googleapis.com/youtube/v3/search"
+    params = {
+        "channelId": YOUTUBE_CHANNEL_ID,
+        "order": "date",
+        "maxResults": 1,
+        "part": "snippet"
+    }
+    data = yt_request(url, params)
+    if "items" not in data:
+        return None
+    return data["items"][0]
+
+@app.route("/api/youtube")
+def api_youtube():
+    channel = get_yt_channel_stats()
+    video = get_yt_latest_video()
+
+    if not channel:
+        return jsonify({"error": "No channel data"}), 500
+
+    stats = channel["statistics"]
+    snippet = channel["snippet"]
+
+    info = {
+        "subscribers": stats.get("subscriberCount", 0),
+        "views_total": stats.get("viewCount", 0),
+        "title": snippet.get("title", "-"),
+        "thumbnail": snippet.get("thumbnails", {}).get("high", {}).get("url", ""),
+        "latest_video_title": video["snippet"]["title"] if video else "-",
+        "latest_video_thumbnail": video["snippet"]["thumbnails"]["high"]["url"] if video else "",
     }
 
     return jsonify(info)
 
+# =====================================================
+# ===================== FRONTEND ======================
+# =====================================================
 
-# ------------ FRONTEND --------------------
 @app.route("/")
-def index():
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Dashboard prend0</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                background: #0e0e10;
-                color: #efeff1;
-                padding: 30px;
-            }
-            .card {
-                background: #18181b;
-                padding: 20px;
-                border-radius: 10px;
-                width: 350px;
-                margin-bottom: 20px;
-                box-shadow: 0 0 10px #00000055;
-            }
-            h1 { color: #9146FF; }
-            .avatar {
-                width: 80px;
-                height: 80px;
-                border-radius: 50%;
-                border: 3px solid #9146FF;
-            }
-        </style>
-    </head>
-    <body>
-
-        <h1>Dashboard prend0</h1>
-
-        <div class="card">
-            <img id="avatar" class="avatar" src="" />
-            <h2 id="display_name">-</h2>
-            <p><b>Login:</b> <span id="login">-</span></p>
-            <p><b>Seguidores:</b> <span id="followers">0</span></p>
-            <p><b>Viewers:</b> <span id="viewer_count">0</span></p>
-            <p><b>En directo:</b> <span id="stream_online">No</span></p>
-        </div>
-
-        <p style="color:#555;">Actualiza cada 10 segundos</p>
-
-        <script>
-            async function update() {
-                const res = await fetch("/api/status");
-                const data = await res.json();
-
-                document.getElementById("avatar").src = data.profile_image_url;
-                document.getElementById("display_name").textContent = data.display_name;
-                document.getElementById("login").textContent = data.login;
-                document.getElementById("followers").textContent = data.followers;
-                document.getElementById("viewer_count").textContent = data.viewer_count;
-                document.getElementById("stream_online").textContent = data.stream_online ? "Sí" : "No";
-            }
-
-            update();
-            setInterval(update, 10000);
-        </script>
-
-    </body>
-    </html>
-    """
-
+def dashboard():
+    return render_template("dashboard.html")
 
 if __name__ == "__main__":
     app.run(debug=True)

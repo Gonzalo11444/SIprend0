@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard de Rend0</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<div class="sidebar">
+    <h2>prend0 Dashboard</h2>
+    <a href="#" class="tab-link active" data-tab="twitch">Twitch</a>
+    <a href="#" class="tab-link" data-tab="youtube">YouTube</a>
+    <a href="#" class="tab-link" data-tab="tiktok">TikTok</a>
+    <a href="#">Ajustes</a>
+</div>
+
+<div class="main">
+    <!-- Twitch -->
+    <div class="tab" id="twitch" style="display:block;">
+        <h1>Panel de Twitch</h1>
+        <div class="cards">
+            <div class="card"><h3>Seguidores</h3><p id="followers">Cargando...</p></div>
+            <div class="card"><h3>Estado</h3><p id="status">Cargando...</p></div>
+            <div class="card"><h3>Viewers</h3><p id="viewers">Cargando...</p></div>
+            <div class="card"><h3>Título</h3><p id="title">Cargando...</p></div>
+        </div>
+    </div>
+
+    <!-- YouTube -->
+    <div class="tab" id="youtube" style="display:none;">
+        <h1>Panel de YouTube</h1>
+        <div class="cards">
+            <div class="card"><h3>Suscriptores</h3><p id="yt_subs">Cargando...</p></div>
+            <div class="card"><h3>Total Views</h3><p id="yt_views">Cargando...</p></div>
+            <div class="card"><h3>Último Video</h3><p id="yt_last_title">Cargando...</p></div>
+            <div class="card"><img id="yt_last_thumb" src="" alt="Thumbnail"></div>
+        </div>
+    </div>
+
+    <!-- TikTok (placeholder) -->
+    <div class="tab" id="tiktok" style="display:none;">
+        <h1>Panel de TikTok</h1>
+        <p>Próximamente...</p>
+    </div>
+</div>
+
+
+
+<script src="/static/dashboard.js"></script>
+</body>
+</html>
