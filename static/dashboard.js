@@ -32,5 +32,5 @@ async function loadYouTube() {
     document.getElementById("yt_last_title").textContent = data.latest_video_title;
     document.getElementById("yt_last_thumb").src = data.latest_video_thumbnail;
 }
-setInterval(loadYouTube, 10000);
+setInterval(loadYouTube, 3600000);
 loadYouTube();
